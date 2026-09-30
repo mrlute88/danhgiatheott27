@@ -1,0 +1,31 @@
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Streamlit secrets and credentials
+.streamlit/credentials.toml
+.streamlit/secrets.toml
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Agent / Tool files
+.agent/
+
+# Office temp lock files
+~$*
+
+# Temporary export files (keep directory via .gitkeep)
+exports/*
+!exports/.gitkeep
