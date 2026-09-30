@@ -23,10 +23,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
-
 from pypdf import PdfReader, PdfWriter
 import pypdfium2 as pdfium
-import pdfplumber
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
 
 
 # ---------------------------------------------------------------------------
@@ -778,6 +780,8 @@ class GoogleVisionDocExtractor:
 
     def extract_digital_text_hint(self, pdf_bytes: bytes, max_pages: int = 5) -> str:
         """Extracts digital text layer from PDF using pdfplumber to provide ground-truth text context."""
+        if not pdfplumber:
+            return ""
         hints = []
         try:
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
