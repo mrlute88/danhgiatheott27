@@ -14,18 +14,25 @@ import streamlit as st
 import openpyxl
 
 import os
+import re
 import base64
 import subprocess
 import streamlit.components.v1 as components
 
 from agents import DataClassifierAgent, StudentInput, TT27CommentatorAgent, OutputValidatorAgent
+import importlib
+import utils.excel_handler
+importlib.reload(utils.excel_handler)
 from utils.excel_handler import (
     load_workbook_and_df,
     auto_detect_columns,
     update_excel_workbook,
+    extract_pedagogical_metadata,
 )
 from utils.sample_generator import (
     get_sample_excel_bytes,
+    get_sample_midterm_excel_bytes,
+    get_sample_endterm_excel_bytes,
     get_sample_exam_image_bytes,
     get_sample_exam_pdf_bytes,
 )
@@ -308,10 +315,49 @@ with st.sidebar:
 
     # Pedagogical Defaults
     st.markdown("#### 📚 Thiết lập Sư phạm Mặc định")
-    default_subject = st.selectbox("Môn học", options=SUBJECTS, index=0)
-    default_grade = st.selectbox("Khối lớp", options=GRADES, index=2)  # Lớp 3
-    default_period = st.selectbox("Thời điểm đánh giá", options=PERIODS, index=1)  # Cuối HK1
-    default_tone = st.selectbox("Văn phong lời phê", options=COMMENT_TONES, index=0)
+
+    # Apply pending auto-detected pedagogical settings from Excel file BEFORE widget instantiation
+    if "pending_auto_meta" in st.session_state:
+        pending_meta = st.session_state.pop("pending_auto_meta")
+        if pending_meta.get("subject") in SUBJECTS:
+            st.session_state["default_subject"] = pending_meta["subject"]
+        if pending_meta.get("grade") in GRADES:
+            st.session_state["default_grade"] = pending_meta["grade"]
+        if pending_meta.get("period") in PERIODS:
+            st.session_state["default_period"] = pending_meta["period"]
+
+    if "default_subject" not in st.session_state or st.session_state["default_subject"] not in SUBJECTS:
+        st.session_state["default_subject"] = "Tiếng Việt" if "Tiếng Việt" in SUBJECTS else SUBJECTS[0]
+    if "default_grade" not in st.session_state or st.session_state["default_grade"] not in GRADES:
+        st.session_state["default_grade"] = "Lớp 1" if "Lớp 1" in GRADES else GRADES[0]
+    if "default_period" not in st.session_state or st.session_state["default_period"] not in PERIODS:
+        st.session_state["default_period"] = "Giữa Học kỳ 1" if "Giữa Học kỳ 1" in PERIODS else PERIODS[0]
+    if "default_tone" not in st.session_state or st.session_state["default_tone"] not in COMMENT_TONES:
+        st.session_state["default_tone"] = COMMENT_TONES[0]
+
+    default_subject = st.selectbox(
+        "Môn học",
+        options=SUBJECTS,
+        key="default_subject",
+        help="Hệ thống tự động nhận diện từ file Excel tải lên. Bạn cũng có thể tùy chỉnh lại ở đây."
+    )
+    default_grade = st.selectbox(
+        "Khối lớp",
+        options=GRADES,
+        key="default_grade",
+        help="Hệ thống tự động nhận diện từ file Excel tải lên."
+    )
+    default_period = st.selectbox(
+        "Thời điểm đánh giá",
+        options=PERIODS,
+        key="default_period",
+        help="Hệ thống tự động nhận diện Giữa Kỳ / Cuối Kỳ từ file Excel tải lên."
+    )
+    default_tone = st.selectbox(
+        "Văn phong lời phê",
+        options=COMMENT_TONES,
+        key="default_tone"
+    )
 
     st.divider()
 
@@ -385,38 +431,78 @@ tab_batch, tab_single, tab_doc_converter, tab_knowledge = st.tabs(
 with tab_batch:
     st.markdown("### 1. Tải lên hoặc Trải nghiệm Bảng điểm Học sinh")
 
-    col_up_action1, col_up_action2 = st.columns([1, 1])
+    col_up_action1, col_up_action2, col_up_action3 = st.columns([1, 1, 1])
 
     with col_up_action1:
-        # 1-Click Sample Download
-        sample_bytes = get_sample_excel_bytes()
+        # Sample Mid-term (Image 1)
+        sample_gk_bytes = get_sample_midterm_excel_bytes()
         st.download_button(
-            label="📥 Tải file Excel mẫu chuẩn TT27 (.xlsx)",
-            data=sample_bytes,
-            file_name="Bang_Theo_Doi_Danh_Gia_Mau_TT27.xlsx",
+            label="📥 Tải mẫu Giữa kỳ 1 (Ảnh 1)",
+            data=sample_gk_bytes,
+            file_name="Bang_Nhan_Xet_Giua_Ky_1_Lop1_TiengViet.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Tải file Excel mẫu gồm 15 học sinh với đầy đủ các mức T, H, C và các ghi chú sư phạm thực tế.",
+            help="Bảng điểm Giữa kỳ 1 chuẩn TT27: Môn Tiếng Việt Lớp 1, có cột mức xếp loại XL GK1.",
             use_container_width=True,
         )
+        if st.button("🧪 Thử mẫu Giữa Kỳ 1 (Ảnh 1)", use_container_width=True, help="Nạp trực tiếp mẫu bảng điểm Giữa kỳ 1 để trải nghiệm ngay."):
+            st.session_state["loaded_file_bytes"] = sample_gk_bytes
+            st.session_state["loaded_file_name"] = "Bang_Nhan_Xet_Giua_Ky_1_Lop1_TiengViet.xlsx"
+            st.session_state["generation_results"] = None
+            st.session_state["last_scanned_file_sig"] = None
+            st.rerun()
 
     with col_up_action2:
-        # 1-Click Load Sample into App
-        if st.button("🧪 Nạp dữ liệu mẫu 15 học sinh để thử ngay", use_container_width=True):
-            st.session_state["loaded_file_bytes"] = sample_bytes
+        # Sample End-term with score (Image 2)
+        sample_ck_bytes = get_sample_endterm_excel_bytes()
+        st.download_button(
+            label="📥 Tải mẫu Cuối kỳ 1 có Điểm (Ảnh 2)",
+            data=sample_ck_bytes,
+            file_name="Bang_Nhan_Xet_Cuoi_Ky_1_Lop1_TiengViet_CoDiemSo.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Bảng điểm Cuối kỳ 1 chuẩn TT27: Môn Tiếng Việt Lớp 1, có thêm cột Điểm kiểm tra KT CK1 và cột XL CK1.",
+            use_container_width=True,
+        )
+        if st.button("🧪 Thử mẫu Cuối Kỳ 1 (Ảnh 2)", use_container_width=True, help="Nạp trực tiếp mẫu bảng điểm Cuối kỳ 1 có cột điểm số để trải nghiệm ngay."):
+            st.session_state["loaded_file_bytes"] = sample_ck_bytes
+            st.session_state["loaded_file_name"] = "Bang_Nhan_Xet_Cuoi_Ky_1_Lop1_TiengViet_CoDiemSo.xlsx"
+            st.session_state["generation_results"] = None
+            st.session_state["last_scanned_file_sig"] = None
+            st.rerun()
+
+    with col_up_action3:
+        # Standard 9-column sample
+        sample_std_bytes = get_sample_excel_bytes()
+        st.download_button(
+            label="📥 Tải file mẫu tổng hợp (.xlsx)",
+            data=sample_std_bytes,
+            file_name="Bang_Theo_Doi_Danh_Gia_Mau_TT27.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="Tải file Excel mẫu gồm 15 học sinh với đầy đủ các cột dữ liệu tổng hợp.",
+            use_container_width=True,
+        )
+        if st.button("🧪 Thử mẫu Tổng hợp 15 HS", use_container_width=True):
+            st.session_state["loaded_file_bytes"] = sample_std_bytes
             st.session_state["loaded_file_name"] = "Bang_Theo_Doi_Danh_Gia_Mau_TT27.xlsx"
             st.session_state["generation_results"] = None
-            st.success("Đã nạp file mẫu thành công! Bạn có thể xem bảng bên dưới.")
+            st.session_state["last_scanned_file_sig"] = None
+            st.rerun()
 
     uploaded_file = st.file_uploader(
         "Hoặc kéo thả file Excel bảng điểm của lớp bạn (.xlsx, .xls):",
         type=["xlsx", "xls"],
-        help="Hỗ trợ mọi định dạng bảng điểm tiểu học. Hệ thống tự động nhận diện dòng tiêu đề trường lớp.",
+        help="Hỗ trợ mọi định dạng bảng điểm tiểu học. Hệ thống tự động nhận diện môn học, khối lớp, giữa kỳ/cuối kỳ và các cột họ tên, điểm số, mức đạt.",
     )
 
     if uploaded_file is not None:
-        st.session_state["loaded_file_bytes"] = uploaded_file.getvalue()
-        st.session_state["loaded_file_name"] = uploaded_file.name
-        st.session_state["generation_results"] = None
+        file_bytes = uploaded_file.getvalue()
+        if (
+            st.session_state.get("loaded_file_name") != uploaded_file.name
+            or st.session_state.get("loaded_file_bytes") != file_bytes
+        ):
+            st.session_state["loaded_file_bytes"] = file_bytes
+            st.session_state["loaded_file_name"] = uploaded_file.name
+            st.session_state["generation_results"] = None
+            st.session_state["last_scanned_file_sig"] = None
 
     active_bytes = st.session_state.get("loaded_file_bytes")
     active_name = st.session_state.get("loaded_file_name", "Bang_diem.xlsx")
@@ -428,11 +514,44 @@ with tab_batch:
             st.error(f"Không thể đọc file Excel: {e}")
             wb, df, sheet_names, detected_header_row = None, None, [], 1
 
-        if df is not None and not df.empty:
-            st.success(f" Đã đọc thành công file **{active_name}** ({len(df)} dòng dữ liệu học sinh).")
+        if df is not None and not df.empty and wb is not None:
+            # ---------------------------------------------------------
+            # Auto-detection of Pedagogical Defaults from Excel file
+            # ---------------------------------------------------------
+            current_target_sheet = sheet_names[0]
+            file_sig = f"{active_name}_{len(active_bytes)}_{current_target_sheet}"
+
+            if st.session_state.get("last_scanned_file_sig") != file_sig:
+                auto_meta = extract_pedagogical_metadata(wb, sheet_name=current_target_sheet, file_name=active_name)
+                st.session_state["pending_auto_meta"] = auto_meta
+                st.session_state["last_scanned_file_sig"] = file_sig
+                st.session_state["last_detected_meta"] = auto_meta
+                st.rerun()
+
+            # Display Auto-detection confirmation banner
+            st.markdown(
+                f"""
+                <div style="background: linear-gradient(135deg, #1E3A8A 0%, #0D9488 100%); color: white; padding: 14px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.22);">
+                    <div style="font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                        🎯 Đã tự động chọn Thiết lập Sư phạm Mặc định phù hợp với file Excel:
+                    </div>
+                    <div style="margin-top: 8px; font-size: 13.5px; opacity: 0.95; display: flex; flex-wrap: wrap; gap: 18px;">
+                        <span>📚 Môn học: <b>{default_subject}</b></span>
+                        <span>🏫 Khối lớp: <b>{default_grade}</b></span>
+                        <span>⏰ Thời điểm: <b>{default_period}</b></span>
+                    </div>
+                    <div style="margin-top: 6px; font-size: 11.5px; opacity: 0.85;">
+                        <i>(Các mục trên đã được tự động đồng bộ vào 'Thiết lập Sư phạm Mặc định' ở thanh bên trái. Bạn có thể tùy chỉnh lại bất kỳ lúc nào nếu cần)</i>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.success(f" Đã đọc thành công file **{active_name}** ({len(df)} học sinh).")
 
             with st.expander("🛠️ Xem & Tinh chỉnh Ánh xạ Cột dữ liệu (Column Mapping)", expanded=True):
-                col_cfg1, col_cfg2, col_cfg3 = st.columns([1, 1, 1])
+                col_cfg1, col_cfg2 = st.columns([1, 1])
 
                 with col_cfg1:
                     selected_sheet = st.selectbox(
@@ -448,24 +567,52 @@ with tab_batch:
 
                 with col_cfg2:
                     st.caption(f"Dòng tiêu đề được nhận diện tự động: **Dòng {detected_header_row}**")
-                    all_cols = df.columns.tolist()
+                    all_cols = [c for c in df.columns if c != "_excel_row"]
                     auto_mapped = auto_detect_columns(all_cols)
 
                     name_col = st.selectbox(
                         "Cột Họ và tên học sinh (*):",
                         options=all_cols,
                         index=all_cols.index(auto_mapped["name"]) if auto_mapped["name"] in all_cols else 0,
+                        help="Hệ thống tự động ghép cột Họ đệm và Tên (nếu bị tách 2 cột) thành họ tên đầy đủ chuẩn xác.",
                     )
 
+                col_cfg3, col_cfg4 = st.columns([1, 1])
                 with col_cfg3:
-                    score_col = st.selectbox(
-                        "Cột Điểm số hoặc Mức đạt (T/H/C) (*):",
+                    # Level column (XL GK1, XL CK1, Mức đạt, etc.)
+                    level_default_col = auto_mapped.get("level") or auto_mapped.get("score")
+                    level_idx = all_cols.index(level_default_col) if level_default_col in all_cols else (1 if len(all_cols) > 1 else 0)
+                    level_col = st.selectbox(
+                        "Cột Mức xếp loại / hoàn thành (T/H/C) (*):",
                         options=all_cols,
-                        index=all_cols.index(auto_mapped["score"]) if auto_mapped["score"] in all_cols else (1 if len(all_cols) > 1 else 0),
+                        index=level_idx,
+                        help="Cột chứa mức đánh giá T (Tốt), H (Hoàn thành), C (Chưa hoàn thành), ví dụ: XL GK1, XL CK1.",
                     )
 
-                col_cfg4, col_cfg5 = st.columns([1, 1])
                 with col_cfg4:
+                    # Exam score column (KT CK1, Điểm kiểm tra, etc.)
+                    exam_score_options = ["-- Không có (Giữa kỳ không thi điểm số) --"] + all_cols
+                    detected_score_col = auto_mapped.get("score")
+                    # Only default to exam score if it's distinct from level column or explicitly has 'kt' / 'điểm'
+                    is_distinct_score = (
+                        detected_score_col
+                        and detected_score_col != level_default_col
+                        and re.search(r"kt\s*(ck|gk|hk|cn|[12])|điểm", str(detected_score_col).lower())
+                    )
+                    default_exam_idx = (
+                        exam_score_options.index(detected_score_col)
+                        if is_distinct_score and detected_score_col in exam_score_options
+                        else 0
+                    )
+                    exam_score_col = st.selectbox(
+                        "Cột Điểm kiểm tra định kỳ (Điểm số 1-10):",
+                        options=exam_score_options,
+                        index=default_exam_idx,
+                        help="Đối với bảng điểm Cuối kỳ có thêm cột Điểm kiểm tra (KT CK1), AI sẽ kết hợp điểm số để nhận xét sâu sắc hơn.",
+                    )
+
+                col_cfg5, col_cfg6 = st.columns([1, 1])
+                with col_cfg5:
                     note_options = ["-- Không sử dụng --"] + all_cols
                     default_note_idx = (
                         note_options.index(auto_mapped["note"])
@@ -479,7 +626,7 @@ with tab_batch:
                         help="Ghi chú về tính cách, năng khiếu, sự tiến bộ sẽ được AI lồng ghép khéo léo vào lời nhận xét.",
                     )
 
-                with col_cfg5:
+                with col_cfg6:
                     target_mode = st.radio(
                         "Nơi ghi lời nhận xét:",
                         options=["Ghi vào một cột có sẵn", "Thêm cột mới vào cuối bảng"],
@@ -501,11 +648,12 @@ with tab_batch:
                         )
                         target_col_name = None
 
-            # Preview original data table
+            # Preview original data table (excluding internal _excel_row)
             st.markdown("#### 📋 Dữ liệu học sinh đọc được từ Excel:")
-            st.dataframe(df.head(10), use_container_width=True)
+            preview_cols = [c for c in df.columns if c != "_excel_row"]
+            st.dataframe(df[preview_cols].head(10), use_container_width=True)
             if len(df) > 10:
-                st.caption(f"Đang hiển thị 10/{len(df)} dòng đầu tiên.")
+                st.caption(f"Đang hiển thị 10/{len(df)} học sinh đầu tiên.")
 
             st.divider()
 
@@ -549,7 +697,14 @@ with tab_batch:
 
                 for i, (orig_idx, row) in enumerate(df.iterrows()):
                     student_name = str(row.get(name_col, f"Học sinh {i+1}")).strip()
-                    score_val = row.get(score_col, "H")
+                    level_val = row.get(level_col, "H")
+
+                    exam_val = None
+                    if exam_score_col != "-- Không có (Giữa kỳ không thi điểm số) --" and exam_score_col in df.columns:
+                        raw_ex = row.get(exam_score_col, None)
+                        if pd.notna(raw_ex) and str(raw_ex).strip() and str(raw_ex).strip().lower() != "nan":
+                            exam_val = raw_ex
+
                     note_val = ""
                     if note_col != "-- Không sử dụng --" and note_col in df.columns:
                         raw_note = row.get(note_col, "")
@@ -562,7 +717,8 @@ with tab_batch:
                         student_name=student_name,
                         subject=default_subject,
                         grade=default_grade,
-                        score_or_level=score_val,
+                        score_or_level=level_val,
+                        exam_score=exam_val,
                         teacher_note=note_val,
                         period=default_period,
                         tone=default_tone,
@@ -587,11 +743,16 @@ with tab_batch:
                         teacher_note=note_val,
                     )
 
+                    excel_row_val = row.get("_excel_row", orig_idx)
+                    score_display = f"{exam_val} (Mức {c_result.standardized_level})" if exam_val is not None else str(level_val)
+
                     results_list.append(
                         {
                             "df_idx": orig_idx,
+                            "excel_row": excel_row_val,
                             "student_name": student_name,
-                            "score_raw": score_val,
+                            "score_raw": score_display,
+                            "exam_score": exam_val,
                             "level": c_result.standardized_level,
                             "level_label": c_result.level_label,
                             "teacher_note": note_val,
@@ -697,6 +858,7 @@ with tab_batch:
                     res_df,
                     use_container_width=True,
                     num_rows="fixed",
+                    key="batch_results_editor",
                     column_config={
                         "Nhận xét Thông tư 27 (Có thể chỉnh sửa)": st.column_config.TextColumn(
                             "Lời nhận xét Thông tư 27 (Nhấp để sửa)",
@@ -705,11 +867,62 @@ with tab_batch:
                     },
                 )
 
+                if edited_df is None or not isinstance(edited_df, pd.DataFrame):
+                    edited_df = res_df
+
+                # Identify comment column and student name column in edited_df reliably
+                comment_col = None
+                for candidate in [
+                    "Nhận xét Thông tư 27 (Có thể chỉnh sửa)",
+                    "Lời nhận xét Thông tư 27 (Nhấp để sửa)",
+                    "Nhận xét Thông tư 27",
+                    "Nhận xét",
+                ]:
+                    if candidate in edited_df.columns:
+                        comment_col = candidate
+                        break
+
+                if not comment_col:
+                    for col in edited_df.columns:
+                        if "nhận xét" in str(col).lower() or "comment" in str(col).lower():
+                            comment_col = col
+                            break
+                    if not comment_col and len(edited_df.columns) > 0:
+                        comment_col = edited_df.columns[-1]
+
+                name_col = None
+                for col in edited_df.columns:
+                    if "tên" in str(col).lower():
+                        name_col = col
+                        break
+
+                edited_comments_by_name = {}
+                if name_col and comment_col:
+                    for _, row in edited_df.iterrows():
+                        s_name = str(row.get(name_col, "")).strip()
+                        c_text = str(row.get(comment_col, "") or "").strip()
+                        if s_name:
+                            edited_comments_by_name[s_name] = c_text
+
                 # Build updated comments list from edited_df
                 final_row_comments = []
                 for i, r in enumerate(gen_results):
-                    updated_text = edited_df.iloc[i]["Nhận xét Thông tư 27 (Có thể chỉnh sửa)"]
-                    final_row_comments.append((r["df_idx"], updated_text))
+                    s_name = str(r.get("student_name", "")).strip()
+                    updated_text = ""
+                    if s_name and s_name in edited_comments_by_name:
+                        updated_text = edited_comments_by_name[s_name]
+                    elif comment_col and i < len(edited_df):
+                        val_c = edited_df.iloc[i].get(comment_col, "")
+                        if isinstance(val_c, dict):
+                            val_c = val_c.get("Nhận xét Thông tư 27 (Có thể chỉnh sửa)") or val_c.get("comment", "")
+                        updated_text = str(val_c or "").strip()
+
+                    # Sanitize: if updated_text is empty or accidental dict string, use pure comment
+                    if not updated_text or (isinstance(updated_text, str) and updated_text.startswith("{")):
+                        updated_text = str(r.get("comment", "")).strip()
+
+                    row_key = r.get("excel_row", r.get("df_idx", i))
+                    final_row_comments.append((row_key, updated_text))
 
                 # Export to Excel preserving original styles
                 target_mode_flag = "existing" if target_mode == "Ghi vào một cột có sẵn" else "new"
@@ -725,9 +938,12 @@ with tab_batch:
                         row_comments=final_row_comments,
                     )
 
-                    export_filename = active_name.replace(".xlsx", "_Da_Nhan_Xet_TT27.xlsx")
-                    if not export_filename.endswith(".xlsx"):
-                        export_filename += ".xlsx"
+                    clean_base = active_name
+                    if clean_base.lower().endswith(".xlsx"):
+                        clean_base = clean_base[:-5]
+                    elif clean_base.lower().endswith(".xls"):
+                        clean_base = clean_base[:-4]
+                    export_filename = f"{clean_base}_Da_Nhan_Xet_TT27.xlsx"
 
                     st.markdown("### 3. Tải về Kết quả")
                     st.download_button(

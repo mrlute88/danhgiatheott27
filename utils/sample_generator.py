@@ -273,13 +273,231 @@ def create_sample_excel_workbook() -> Workbook:
     return wb
 
 
-def get_sample_excel_bytes() -> bytes:
-    """Returns sample Excel workbook as bytes for Streamlit download button."""
-    wb = create_sample_excel_workbook()
+SAMPLE_STUDENTS_IMG = [
+    ("Trần Thiên", "An", "T", 9.0),
+    ("Nguyễn Mai", "Anh", "T", 10.0),
+    ("Trương Mai", "Anh", "H", 8.0),
+    ("Nguyễn Huỳnh Gia", "Bảo", "T", 9.5),
+    ("Trần Nguyễn Ngọc", "Bội", "H", 7.5),
+    ("Thạch Huỳnh An", "Châu", "H", 7.0),
+    ("Lâm Trần Quốc", "Công", "T", 9.0),
+    ("Thạch Kim", "Hoài", "C", 4.5),
+    ("Chung Gia", "Hưng", "H", 7.5),
+    ("Phạm Gia", "Khang", "T", 9.0),
+    ("Trần Tuấn", "Khang", "H", 8.0),
+    ("Thạch Ngọc Thiên", "Kim", "T", 9.5),
+    ("Trương Thị Kiều", "Loan", "H", 7.0),
+    ("Huỳnh Bảo", "Long", "T", 8.5),
+    ("Thạch Minh", "Luân", "C", 4.0),
+]
+
+
+def create_sample_midterm_excel_workbook() -> Workbook:
+    """Creates a sample workbook exactly matching Image 1 (Giữa Kỳ 1 - Lớp 1 - Môn Tiếng Việt)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tiếng Việt"
+    ws.views.sheetView[0].showGridLines = True
+
+    font_title = Font(name="Times New Roman", size=13, bold=True)
+    font_sub = Font(name="Times New Roman", size=12, bold=True)
+    font_italic = Font(name="Times New Roman", size=11, italic=True)
+    font_header = Font(name="Times New Roman", size=11, bold=True)
+    font_data = Font(name="Times New Roman", size=11)
+
+    thin_border = Border(
+        left=Side(style="thin", color="000000"),
+        right=Side(style="thin", color="000000"),
+        top=Side(style="thin", color="000000"),
+        bottom=Side(style="thin", color="000000"),
+    )
+
+    ws["A1"] = "ỦY BAN NHÂN DÂN XÃ NGỌC TỐ"
+    ws["A1"].font = font_sub
+    ws["E1"] = "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"
+    ws["E1"].font = font_sub
+    ws["E1"].alignment = Alignment(horizontal="center")
+
+    ws["A2"] = "TRƯỜNG TIỂU HỌC NGỌC TỐ"
+    ws["A2"].font = font_sub
+    ws["E2"] = "Độc lập - Tự do - Hạnh phúc"
+    ws["E2"].font = font_sub
+    ws["E2"].alignment = Alignment(horizontal="center")
+
+    ws.merge_cells("A4:F4")
+    ws["A4"] = "BẢNG ĐIỂM CHI TIẾT - MÔN TIẾNG VIỆT - HỌC KỲ 1 - GIỮA KỲ 1 - NĂM HỌC 2026 - 2027"
+    ws["A4"].font = font_title
+    ws["A4"].alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A5:F5")
+    ws["A5"] = "Khối 1 - Lớp 1H1"
+    ws["A5"].font = font_sub
+    ws["A5"].alignment = Alignment(horizontal="center", vertical="center")
+
+    # Header Row at Row 7
+    ws["A7"] = "STT"
+    ws["A7"].font = font_header
+    ws["A7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A7"].border = thin_border
+
+    ws["C7"] = "Họ và tên"
+    ws.merge_cells("C7:D7")
+    ws["C7"].font = font_header
+    ws["C7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["C7"].border = thin_border
+    ws["D7"].border = thin_border
+
+    ws["E7"] = "Nhận xét"
+    ws["E7"].font = font_header
+    ws["E7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["E7"].border = thin_border
+
+    ws["F7"] = "XL GK1"
+    ws["F7"].font = font_header
+    ws["F7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["F7"].border = thin_border
+
+    # Column widths
+    ws.column_dimensions["A"].width = 6
+    ws.column_dimensions["B"].width = 3
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 10
+    ws.column_dimensions["E"].width = 45
+    ws.column_dimensions["F"].width = 12
+
+    # Data Rows
+    for idx, (ho_dem, ten, level, _) in enumerate(SAMPLE_STUDENTS_IMG, start=1):
+        r = 7 + idx
+        ws.cell(row=r, column=1, value=idx).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(row=r, column=3, value=ho_dem).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(row=r, column=4, value=ten).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(row=r, column=5, value="").alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(row=r, column=6, value=level).alignment = Alignment(horizontal="center", vertical="center")
+
+        for c in [1, 3, 4, 5, 6]:
+            ws.cell(row=r, column=c).border = thin_border
+            ws.cell(row=r, column=c).font = font_data
+
+    return wb
+
+
+def create_sample_endterm_excel_workbook() -> Workbook:
+    """Creates a sample workbook exactly matching Image 2 (Cuối Kỳ 1 - Lớp 1 - Môn Tiếng Việt với cột điểm số KT CK1)."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tiếng Việt"
+    ws.views.sheetView[0].showGridLines = True
+
+    font_title = Font(name="Times New Roman", size=13, bold=True)
+    font_sub = Font(name="Times New Roman", size=12, bold=True)
+    font_header = Font(name="Times New Roman", size=11, bold=True)
+    font_data = Font(name="Times New Roman", size=11)
+
+    thin_border = Border(
+        left=Side(style="thin", color="000000"),
+        right=Side(style="thin", color="000000"),
+        top=Side(style="thin", color="000000"),
+        bottom=Side(style="thin", color="000000"),
+    )
+
+    ws["A1"] = "ỦY BAN NHÂN DÂN XÃ NGỌC TỐ"
+    ws["A1"].font = font_sub
+    ws["E1"] = "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"
+    ws["E1"].font = font_sub
+    ws["E1"].alignment = Alignment(horizontal="center")
+
+    ws["A2"] = "TRƯỜNG TIỂU HỌC NGỌC TỐ"
+    ws["A2"].font = font_sub
+    ws["E2"] = "Độc lập - Tự do - Hạnh phúc"
+    ws["E2"].font = font_sub
+    ws["E2"].alignment = Alignment(horizontal="center")
+
+    ws.merge_cells("A4:G4")
+    ws["A4"] = "BẢNG ĐIỂM CHI TIẾT - MÔN TIẾNG VIỆT - HỌC KỲ 1 - CUỐI KỲ 1 - NĂM HỌC 2026 - 2027"
+    ws["A4"].font = font_title
+    ws["A4"].alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.merge_cells("A5:G5")
+    ws["A5"] = "Khối 1 - Lớp 1H1"
+    ws["A5"].font = font_sub
+    ws["A5"].alignment = Alignment(horizontal="center", vertical="center")
+
+    # Header Row at Row 7
+    ws["A7"] = "STT"
+    ws["A7"].font = font_header
+    ws["A7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["A7"].border = thin_border
+
+    ws["C7"] = "Họ và tên"
+    ws.merge_cells("C7:D7")
+    ws["C7"].font = font_header
+    ws["C7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["C7"].border = thin_border
+    ws["D7"].border = thin_border
+
+    ws["E7"] = "Nhận xét"
+    ws["E7"].font = font_header
+    ws["E7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["E7"].border = thin_border
+
+    ws["F7"] = "KT CK1"
+    ws["F7"].font = font_header
+    ws["F7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["F7"].border = thin_border
+
+    ws["G7"] = "XL CK1"
+    ws["G7"].font = font_header
+    ws["G7"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["G7"].border = thin_border
+
+    # Column widths
+    ws.column_dimensions["A"].width = 6
+    ws.column_dimensions["B"].width = 3
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 10
+    ws.column_dimensions["E"].width = 45
+    ws.column_dimensions["F"].width = 10
+    ws.column_dimensions["G"].width = 10
+
+    # Data Rows
+    for idx, (ho_dem, ten, level, score) in enumerate(SAMPLE_STUDENTS_IMG, start=1):
+        r = 7 + idx
+        ws.cell(row=r, column=1, value=idx).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(row=r, column=3, value=ho_dem).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(row=r, column=4, value=ten).alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(row=r, column=5, value="").alignment = Alignment(horizontal="left", vertical="center")
+        ws.cell(row=r, column=6, value=score).alignment = Alignment(horizontal="center", vertical="center")
+        ws.cell(row=r, column=7, value=level).alignment = Alignment(horizontal="center", vertical="center")
+
+        for c in [1, 3, 4, 5, 6, 7]:
+            ws.cell(row=r, column=c).border = thin_border
+            ws.cell(row=r, column=c).font = font_data
+
+    return wb
+
+
+def get_sample_midterm_excel_bytes() -> bytes:
+    """Returns sample Giữa Kỳ 1 Excel workbook matching Image 1."""
+    wb = create_sample_midterm_excel_workbook()
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
     return output.getvalue()
+
+
+def get_sample_endterm_excel_bytes() -> bytes:
+    """Returns sample Cuối Kỳ 1 Excel workbook with KT CK1 matching Image 2."""
+    wb = create_sample_endterm_excel_workbook()
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
+
+
+def get_sample_excel_bytes() -> bytes:
+    """Returns standard sample Excel workbook as bytes."""
+    return get_sample_midterm_excel_bytes()
+
 
 
 def get_sample_exam_image_bytes() -> bytes:

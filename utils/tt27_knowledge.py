@@ -431,6 +431,8 @@ def synthesize_unique_comment(
     tier: str = "H_MID",
     teacher_note: str = "",
     tone: str = "Chuẩn mực & Động viên",
+    period: str = "",
+    exam_score: Optional[float] = None,
     used_comments: Optional[set] = None,
     allow_name: bool = True
 ) -> str:
@@ -438,6 +440,7 @@ def synthesize_unique_comment(
     Synthesizes a 100% unique, circular-compliant primary school comment.
     Utilizes combinatorial permutations of Openings x Competency clauses x Closings x Notes
     guaranteeing zero duplicates across an entire classroom batch.
+    Includes contextual phrasing for Mid-term vs End-term (with exam scores).
     """
     import random
     import re
@@ -463,6 +466,9 @@ def synthesize_unique_comment(
         raw_n = str(teacher_note).strip()
         clean_note = raw_n.rstrip(".")
 
+    is_midterm = bool(period and "giữa" in period.lower())
+    is_endterm = bool(period and ("cuối" in period.lower() or "cả năm" in period.lower()))
+
     best_candidate = ""
     for attempt in range(120):
         # 55% chance to use student name for variety
@@ -479,18 +485,45 @@ def synthesize_unique_comment(
 
         first_sentence = f"{opening} {clause}".strip()
 
+        # Build middle sentence if note or exam score exists
+        middle_parts = []
         if clean_note:
             note_lower = clean_note.lower()
             if any(k in note_lower for k in ["chữ", "viết", "trình bày"]):
-                note_text = "Cần lưu ý thêm về chữ viết cho đều đẹp."
+                middle_parts.append("Cần lưu ý thêm về chữ viết cho đều đẹp.")
             elif any(k in note_lower for k in ["nhanh", "tính", "nhẩm"]):
-                note_text = "Em tiếp thu và thao tác rất nhanh nhẹn."
+                middle_parts.append("Em tiếp thu và thao tác rất nhanh nhẹn.")
             elif any(k in note_lower for k in ["đọc", "phát âm"]):
-                note_text = "Em lưu ý rèn thêm phát âm rõ ràng hơn."
+                middle_parts.append("Em lưu ý rèn thêm phát âm rõ ràng hơn.")
             else:
-                note_text = f"{clean_note[0].upper() + clean_note[1:]}."
-            
-            candidate = f"{first_sentence} {note_text} {closing}"
+                middle_parts.append(f"{clean_note[0].upper() + clean_note[1:]}.")
+
+        # For end-term files with numerical exam scores, integrate score comment
+        if is_endterm and exam_score is not None and random.random() < 0.40 and not clean_note:
+            if exam_score >= 9.0:
+                middle_parts.append(random.choice([
+                    "Kết quả bài kiểm tra cuối kỳ đạt điểm xuất sắc.",
+                    "Bài kiểm tra định kỳ hoàn thành rất tốt.",
+                    "Điểm kiểm tra định kỳ đạt thành tích cao."
+                ]))
+            elif exam_score >= 7.0:
+                middle_parts.append(random.choice([
+                    "Bài kiểm tra định kỳ làm bài tốt.",
+                    "Kết quả bài kiểm tra đạt yêu cầu môn học."
+                ]))
+            elif exam_score < 7.0:
+                middle_parts.append("Cần ôn luyện kỹ hơn để nâng cao kết quả bài kiểm tra.")
+
+        # For mid-term files, occasionally mention mid-term progress
+        if is_midterm and random.random() < 0.35 and not middle_parts:
+            middle_parts.append(random.choice([
+                "Có nhiều tiến bộ trong nửa đầu học kỳ.",
+                "Bắt nhịp tốt với nền nếp và yêu cầu môn học.",
+                "Nắm vững kiến thức trọng tâm giữa học kỳ."
+            ]))
+
+        if middle_parts:
+            candidate = f"{first_sentence} {' '.join(middle_parts)} {closing}"
         else:
             candidate = f"{first_sentence} {closing}"
 
@@ -506,3 +539,4 @@ def synthesize_unique_comment(
         best_candidate = f"Em {display_name or student_name} hoàn thành bài học, có tinh thần tự giác cao. Hãy tiếp tục phát huy em nhé."
 
     return best_candidate
+

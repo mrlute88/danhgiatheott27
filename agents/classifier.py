@@ -13,10 +13,11 @@ from utils.tt27_knowledge import SUBJECT_COMPETENCIES
 class StudentInput(BaseModel):
     student_name: str = Field(..., description="Full name of student")
     subject: str = Field("Toán", description="Subject name")
-    grade: str = Field("Lớp 3", description="Grade level (Lớp 1 to Lớp 5)")
-    score_or_level: Any = Field(..., description="Raw score or completion level from Excel")
+    grade: str = Field("Lớp 1", description="Grade level (Lớp 1 to Lớp 5)")
+    score_or_level: Any = Field(..., description="Raw score or completion level from Excel (XL GK1, XL CK1, etc.)")
+    exam_score: Optional[Any] = Field(default=None, description="Optional raw numerical exam score (KT CK1, KT GK1, etc.)")
     teacher_note: Optional[str] = Field(default="", description="Teacher qualitative notes or remarks")
-    period: str = Field("Cuối Học kỳ 1", description="Evaluation period")
+    period: str = Field("Giữa Học kỳ 1", description="Evaluation period")
     tone: str = Field("Chuẩn mực & Động viên", description="Comment tone style")
 
 
@@ -66,18 +67,34 @@ class DataClassifierAgent:
 
         # String matching for completion levels
         val_lower = val_str.lower()
-        if any(k in val_lower for k in ["htt", "tốt", "xuất sắc", "giỏi", "^t$"]) or val_str.upper() == "T":
+        if any(k in val_lower for k in ["htt", "tốt", "xuất sắc", "giỏi"]) or val_str.upper() == "T":
             return "T", None, "T_NORMAL"
-        elif any(k in val_lower for k in ["cht", "chưa hoàn thành", "chưa đạt", "yếu", "kém", "^c$"]) or val_str.upper() == "C":
+        elif any(k in val_lower for k in ["cht", "chưa hoàn thành", "chưa đạt", "yếu", "kém"]) or val_str.upper() == "C":
             return "C", None, "C_LOW"
-        elif any(k in val_lower for k in ["ht", "hoàn thành", "đạt", "khá", "trung bình", "^h$"]) or val_str.upper() == "H":
+        elif any(k in val_lower for k in ["ht", "hoàn thành", "đạt", "khá", "trung bình"]) or val_str.upper() == "H":
             return "H", None, "H_MID"
 
         # Default fallback
         return "H", None, "H_MID"
 
     def classify(self, student: StudentInput) -> ClassificationResult:
-        level, num_score, tier = self.parse_score_and_level(student.score_or_level)
+        # Check both score_or_level and explicit exam_score
+        num_score = None
+        if student.exam_score is not None and str(student.exam_score).strip():
+            _, parsed_exam_num, _ = self.parse_score_and_level(student.exam_score)
+            if parsed_exam_num is not None:
+                num_score = parsed_exam_num
+
+        level, parsed_num, tier = self.parse_score_and_level(student.score_or_level)
+        if num_score is None and parsed_num is not None:
+            num_score = parsed_num
+
+        # If a numerical exam score was provided and the level was either derived or not explicitly T/H/C
+        if num_score is not None:
+            # If student.score_or_level was empty or just a number, refine level from score
+            str_level = str(student.score_or_level).strip().upper()
+            if str_level not in ["T", "H", "C"]:
+                level, _, tier = self.parse_score_and_level(num_score)
 
         level_labels = {
             "T": "Hoàn thành tốt (Mức T)",
@@ -102,6 +119,9 @@ class DataClassifierAgent:
 
         # Pedagogical guidance synthesis
         guidance = []
+        if num_score is not None:
+            guidance.append(f"Điểm bài kiểm tra định kỳ đạt {num_score} điểm.")
+
         if level == "T":
             guidance.append("Tuyên dương tinh thần học tập xuất sắc, tư duy vững vàng và sự chủ động.")
             if student.teacher_note:

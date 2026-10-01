@@ -25,7 +25,8 @@ Nhiệm vụ của bạn là viết nhận xét học sinh ngắn gọn, tinh t�
 Thông tin học sinh:
 - Họ và tên: {student_name}
 - Môn học: {subject} - Lớp: {grade}
-- Mức độ hoàn thành / Điểm số: {score_or_level} (Mức chuẩn hóa: {level_label})
+- Mức độ hoàn thành: {level_label}
+- Điểm kiểm tra định kỳ: {exam_score_str}
 - Ghi chú từ giáo viên: {teacher_note}
 - Thời điểm đánh giá: {period}
 - Phong cách: {tone}
@@ -42,8 +43,9 @@ Quy tắc viết nhận xét:
 2. Tốt/Điểm cao (9-10): Tuyên dương ưu điểm nổi bật (tư duy tốt, cẩn thận, sáng tạo) và khuyến khích phát huy.
 3. Hoàn thành/Điểm trung bình (7-8): Ghi nhận sự nỗ lực, nêu rõ kỹ năng làm tốt và chỉ ra 1 điểm cần luyện thêm nhẹ nhàng.
 4. Chưa hoàn thành/Điểm yếu (<7): Dùng từ ngữ nhẹ nhàng, mang tính hỗ trợ, không dùng từ tiêu cực. Chỉ rõ kỹ năng cụ thể cần phụ đạo/rèn thêm.
-5. Không viết chung chung kiểu "Học tốt, ngoan". Hãy gắn với kỹ năng môn học (VD: "Tính toán nhanh", "Đọc diễn cảm", "Giữ vở sạch chữ đẹp").
-6. Chỉ trả về duy nhất nội dung nhận xét, không kèm lời mở đầu hay giải thích.
+5. Nếu là đánh giá Giữa kỳ (chưa có điểm số bài thi), tập trung vào sự tiến bộ, khả năng bắt nhịp và nền nếp học tập. Nếu là Cuối kỳ (có thêm cột điểm số), nhận xét tổng kết kỳ học kết hợp kết quả kiểm tra.
+6. Không viết chung chung kiểu "Học tốt, ngoan". Hãy gắn với kỹ năng môn học (VD: "Tính toán nhanh", "Đọc diễn cảm", "Giữ vở sạch chữ đẹp").
+7. Chỉ trả về duy nhất nội dung nhận xét, không kèm lời mở đầu hay giải thích.
 """
 
 
@@ -133,12 +135,19 @@ class TT27CommentatorAgent:
             last_few = recent_comments[-6:]
             used_sample_str = "\n".join([f"- \"{c}\"" for c in last_few])
 
+        if classification.numerical_score is not None:
+            exam_score_str = f"{classification.numerical_score}/10 điểm"
+        elif student.exam_score is not None and str(student.exam_score).strip():
+            exam_score_str = f"{student.exam_score} điểm"
+        else:
+            exam_score_str = "Đánh giá định kỳ bằng mức xếp loại (không thi điểm số)"
+
         prompt = SYSTEM_PROMPT_TEMPLATE.format(
             student_name=student.student_name,
             subject=student.subject,
             grade=student.grade,
-            score_or_level=student.score_or_level,
             level_label=classification.level_label,
+            exam_score_str=exam_score_str,
             teacher_note=student.teacher_note if student.teacher_note else "Không có ghi chú riêng",
             period=student.period,
             tone=student.tone,
@@ -200,6 +209,9 @@ class TT27CommentatorAgent:
             tier=classification.tier,
             teacher_note=student.teacher_note or "",
             tone=student.tone,
+            period=student.period,
+            exam_score=classification.numerical_score,
             used_comments=used_comments,
             allow_name=True
         )
+
