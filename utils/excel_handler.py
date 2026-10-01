@@ -310,118 +310,150 @@ def ensure_openpyxl_workbook(file_bytes: bytes, file_name: str = "") -> openpyxl
     # 4. Try legacy BIFF8 .xls via xlrd
     if xlrd is not None:
         try:
-            try:
-                x_wb = xlrd.open_workbook(file_contents=file_bytes, formatting_info=True)
-            except Exception:
-                x_wb = xlrd.open_workbook(file_contents=file_bytes, formatting_info=False)
+            x_wb = None
+            log_sink = io.StringIO()
+            # Try combinations: ignore_workbook_corruption (True, False) with formatting_info (True, False).
+            # ignore_workbook_corruption=True is essential for files exported by VNedu, SMAS, CSDL Ngành,
+            # which frequently contain non-standard sector allocation table markers that raise CompDocError.
+            for ign in (True, False):
+                for fmt in (True, False):
+                    try:
+                        x_wb = xlrd.open_workbook(
+                            file_contents=file_bytes,
+                            formatting_info=fmt,
+                            ignore_workbook_corruption=ign,
+                            logfile=log_sink,
+                        )
+                        break
+                    except Exception:
+                        continue
+                if x_wb is not None:
+                    break
 
-            wb = openpyxl.Workbook()
-            wb.remove(wb.active)
+            if x_wb is not None:
+                wb = openpyxl.Workbook()
+                wb.remove(wb.active)
 
-            horiz_align_map = {0: 'general', 1: 'left', 2: 'center', 3: 'right', 4: 'fill', 5: 'justify', 6: 'center_continuous'}
-            vert_align_map = {0: 'top', 1: 'center', 2: 'bottom', 3: 'justify'}
-            has_formatting = bool(hasattr(x_wb, "xf_list") and x_wb.xf_list and hasattr(x_wb, "font_list"))
+                horiz_align_map = {0: 'general', 1: 'left', 2: 'center', 3: 'right', 4: 'fill', 5: 'justify', 6: 'center_continuous'}
+                vert_align_map = {0: 'top', 1: 'center', 2: 'bottom', 3: 'justify'}
+                has_formatting = bool(hasattr(x_wb, "xf_list") and x_wb.xf_list and hasattr(x_wb, "font_list"))
 
-            for sheet_idx in range(x_wb.nsheets):
-                xs = x_wb.sheet_by_index(sheet_idx)
-                ws = wb.create_sheet(title=xs.name or f"Sheet{sheet_idx+1}")
+                for sheet_idx in range(x_wb.nsheets):
+                    xs = x_wb.sheet_by_index(sheet_idx)
+                    ws = wb.create_sheet(title=xs.name or f"Sheet{sheet_idx+1}")
 
-                # Copy column dimensions (widths & hidden status)
-                if hasattr(xs, "colinfo_map") and xs.colinfo_map:
-                    for c, cinfo in xs.colinfo_map.items():
-                        col_letter = get_column_letter(c + 1)
-                        if cinfo.width > 0:
-                            ws.column_dimensions[col_letter].width = round(cinfo.width / 256.0, 2)
-                        if getattr(cinfo, "hidden", 0):
-                            ws.column_dimensions[col_letter].hidden = True
+                    # Copy column dimensions (widths & hidden status)
+                    if hasattr(xs, "colinfo_map") and xs.colinfo_map:
+                        for c, cinfo in xs.colinfo_map.items():
+                            col_letter = get_column_letter(c + 1)
+                            if getattr(cinfo, "width", 0) > 0:
+                                ws.column_dimensions[col_letter].width = round(cinfo.width / 256.0, 2)
+                            if getattr(cinfo, "hidden", 0):
+                                ws.column_dimensions[col_letter].hidden = True
 
-                # Copy row dimensions (heights & hidden status)
-                if hasattr(xs, "rowinfo_map") and xs.rowinfo_map:
-                    for r, rinfo in xs.rowinfo_map.items():
-                        if rinfo.height > 0:
-                            ws.row_dimensions[r + 1].height = round(rinfo.height / 20.0, 2)
-                        if getattr(rinfo, "hidden", 0):
-                            ws.row_dimensions[r + 1].hidden = True
+                    # Copy row dimensions (heights & hidden status)
+                    if hasattr(xs, "rowinfo_map") and xs.rowinfo_map:
+                        for r, rinfo in xs.rowinfo_map.items():
+                            if getattr(rinfo, "height", 0) > 0:
+                                ws.row_dimensions[r + 1].height = round(rinfo.height / 20.0, 2)
+                            if getattr(rinfo, "hidden", 0):
+                                ws.row_dimensions[r + 1].hidden = True
 
-                for r in range(xs.nrows):
-                    for c in range(xs.ncols):
-                        cell = xs.cell(r, c)
-                        val = cell.value
-                        if cell.ctype == xlrd.XL_CELL_DATE:
-                            try:
-                                val = xlrd.xldate_as_datetime(val, x_wb.datemode)
-                            except Exception:
-                                pass
-                        elif cell.ctype == xlrd.XL_CELL_NUMBER:
-                            if isinstance(val, float) and val.is_integer():
-                                val = int(val)
-                        elif cell.ctype == xlrd.XL_CELL_BOOLEAN:
-                            val = bool(val)
-                        elif cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
-                            val = None
+                    for r in range(xs.nrows):
+                        for c in range(xs.ncols):
+                            cell = xs.cell(r, c)
+                            val = cell.value
+                            if cell.ctype == xlrd.XL_CELL_DATE:
+                                try:
+                                    val = xlrd.xldate_as_datetime(val, x_wb.datemode)
+                                except Exception:
+                                    pass
+                            elif cell.ctype == xlrd.XL_CELL_NUMBER:
+                                if isinstance(val, float) and val.is_integer():
+                                    val = int(val)
+                            elif cell.ctype == xlrd.XL_CELL_BOOLEAN:
+                                val = bool(val)
+                            elif cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+                                val = None
 
-                        target_cell = ws.cell(row=r + 1, column=c + 1)
-                        if val is not None and val != "":
-                            target_cell.value = val
+                            target_cell = ws.cell(row=r + 1, column=c + 1)
+                            if val is not None and val != "":
+                                target_cell.value = val
 
-                        if has_formatting:
-                            try:
-                                xf = x_wb.xf_list[cell.xf_index]
-                                font = x_wb.font_list[xf.font_index]
-                                target_cell.font = Font(
-                                    name=font.name or "Arial",
-                                    size=font.height / 20.0 if font.height else 10,
-                                    bold=bool(font.bold),
-                                    italic=bool(font.italic),
-                                )
-                                h_align = horiz_align_map.get(xf.alignment.hor_align, "left")
-                                v_align = vert_align_map.get(xf.alignment.vert_align, "center")
-                                target_cell.alignment = Alignment(
-                                    horizontal=h_align if h_align != "general" else None,
-                                    vertical=v_align,
-                                    wrap_text=bool(xf.alignment.text_wrapped)
-                                )
-                                b = xf.border
-                                if b.left_line_style or b.right_line_style or b.top_line_style or b.bottom_line_style:
-                                    target_cell.border = Border(
-                                        left=Side(style="thin" if b.left_line_style else None),
-                                        right=Side(style="thin" if b.right_line_style else None),
-                                        top=Side(style="thin" if b.top_line_style else None),
-                                        bottom=Side(style="thin" if b.bottom_line_style else None),
+                            if has_formatting:
+                                try:
+                                    xf = x_wb.xf_list[cell.xf_index]
+                                    font = x_wb.font_list[xf.font_index]
+                                    target_cell.font = Font(
+                                        name=font.name or "Arial",
+                                        size=font.height / 20.0 if font.height else 10,
+                                        bold=bool(font.bold),
+                                        italic=bool(font.italic),
                                     )
-                            except Exception:
-                                pass
+                                    h_align = horiz_align_map.get(xf.alignment.hor_align, "left")
+                                    v_align = vert_align_map.get(xf.alignment.vert_align, "center")
+                                    target_cell.alignment = Alignment(
+                                        horizontal=h_align if h_align != "general" else None,
+                                        vertical=v_align,
+                                        wrap_text=bool(xf.alignment.text_wrapped)
+                                    )
+                                    b = xf.border
+                                    if b.left_line_style or b.right_line_style or b.top_line_style or b.bottom_line_style:
+                                        target_cell.border = Border(
+                                            left=Side(style="thin" if b.left_line_style else None),
+                                            right=Side(style="thin" if b.right_line_style else None),
+                                            top=Side(style="thin" if b.top_line_style else None),
+                                            bottom=Side(style="thin" if b.bottom_line_style else None),
+                                        )
+                                except Exception:
+                                    pass
 
-                if hasattr(xs, "merged_cells") and xs.merged_cells:
-                    for rlo, rhi, clo, chi in xs.merged_cells:
-                        try:
-                            ws.merge_cells(
-                                start_row=rlo + 1,
-                                end_row=rhi,
-                                start_column=clo + 1,
-                                end_column=chi,
-                            )
-                        except Exception:
-                            pass
+                    if hasattr(xs, "merged_cells") and xs.merged_cells:
+                        for rlo, rhi, clo, chi in xs.merged_cells:
+                            if rhi > rlo and chi > clo:
+                                try:
+                                    ws.merge_cells(
+                                        start_row=rlo + 1,
+                                        end_row=rhi,
+                                        start_column=clo + 1,
+                                        end_column=chi,
+                                    )
+                                except Exception:
+                                    pass
 
-            if wb.sheetnames:
-                return wb
+                if wb.sheetnames:
+                    return wb
         except Exception:
             pass
 
     # 5. Last-ditch attempt: use pandas read_excel
     try:
         excel_file = io.BytesIO(file_bytes)
-        dfs = pd.read_excel(excel_file, sheet_name=None)
-        wb = openpyxl.Workbook()
-        wb.remove(wb.active)
-        for sname, s_df in dfs.items():
-            ws = wb.create_sheet(title=str(sname))
-            ws.append([str(c) for c in s_df.columns])
-            for row in s_df.itertuples(index=False):
-                ws.append(["" if pd.isna(v) else v for v in row])
-        if wb.sheetnames:
-            return wb
+        dfs = None
+        try:
+            dfs = pd.read_excel(
+                excel_file,
+                sheet_name=None,
+                engine="xlrd",
+                engine_kwargs={"ignore_workbook_corruption": True}
+            )
+        except Exception:
+            try:
+                excel_file.seek(0)
+                dfs = pd.read_excel(excel_file, sheet_name=None)
+            except Exception:
+                pass
+
+        if dfs:
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+            for sname, s_df in dfs.items():
+                ws = wb.create_sheet(title=str(sname))
+                ws.append([str(c) for c in s_df.columns])
+                for row in s_df.itertuples(index=False):
+                    ws.append(["" if pd.isna(v) else v for v in row])
+            if wb.sheetnames:
+                return wb
     except Exception:
         pass
 
